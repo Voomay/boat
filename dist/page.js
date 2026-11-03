@@ -1,6 +1,14 @@
 const menu = document.querySelector('.menu-toggle');
 const nav = document.querySelector('.header nav');
 
+function closeMobileMenu() {
+  if (!menu || !nav) return;
+  nav.classList.remove('open');
+  menu.setAttribute('aria-expanded', 'false');
+  menu.setAttribute('aria-label', 'Open menu');
+  menu.textContent = '☰';
+}
+
 if (menu && nav) {
   menu.addEventListener('click', () => {
     const open = nav.classList.toggle('open');
@@ -9,13 +17,83 @@ if (menu && nav) {
     menu.textContent = open ? '×' : '☰';
   });
   nav.querySelectorAll('a, button').forEach(link => {
-    link.addEventListener('click', () => {
-      nav.classList.remove('open');
-      menu.setAttribute('aria-expanded', 'false');
-      menu.setAttribute('aria-label', 'Open menu');
-      menu.textContent = '☰';
+    link.addEventListener('click', closeMobileMenu);
+  });
+  document.addEventListener('click', event => {
+    if (nav.classList.contains('open') && !nav.contains(event.target) && !menu.contains(event.target)) {
+      closeMobileMenu();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && nav.classList.contains('open')) {
+      closeMobileMenu();
+      menu.focus();
+    }
+  });
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900 && nav.classList.contains('open')) {
+      closeMobileMenu();
+    }
+  });
+}
+
+// Floating back-to-top visibility
+const floatingTop = document.querySelector('.floating-top');
+if (floatingTop) {
+  window.addEventListener('scroll', () => {
+    floatingTop.classList.toggle('visible', window.scrollY > 380);
+  }, { passive: true });
+}
+
+// Sticky subnav scrollspy on Our Boat page (boats.html)
+const subnavLinks = document.querySelectorAll('.fleet-subnav a[href^="#"]');
+if (subnavLinks.length) {
+  const sections = Array.from(subnavLinks)
+    .map(link => document.querySelector(link.getAttribute('href')))
+    .filter(Boolean);
+
+  function updateActiveSubnav() {
+    const scrollPos = window.scrollY + 180;
+    let currentSection = sections[0];
+    sections.forEach(sec => {
+      if (sec.offsetTop <= scrollPos) {
+        currentSection = sec;
+      }
+    });
+    if (!currentSection) return;
+    const activeId = `#${currentSection.id}`;
+    subnavLinks.forEach(link => {
+      const isMatch = link.getAttribute('href') === activeId;
+      link.classList.toggle('active', isMatch);
+    });
+  }
+
+  window.addEventListener('scroll', updateActiveSubnav, { passive: true });
+}
+
+function renderStatusActions(statusEl, content, subject) {
+  if (!statusEl) return;
+  const actionsWrap = document.createElement('div');
+  actionsWrap.className = 'status-actions';
+
+  const mailLink = document.createElement('a');
+  mailLink.className = 'status-action-btn';
+  mailLink.href = `mailto:info@mkleisure.co.za?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(content)}`;
+  mailLink.textContent = 'Send via Email App →';
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'status-action-btn';
+  copyBtn.textContent = 'Copy Brief';
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard?.writeText(content).then(() => {
+      copyBtn.textContent = 'Copied ✓';
+      setTimeout(() => { copyBtn.textContent = 'Copy Brief'; }, 2200);
     });
   });
+
+  actionsWrap.append(mailLink, copyBtn);
+  statusEl.appendChild(actionsWrap);
 }
 
 // Custom Boat Modal on Our Boats & Gallery pages
@@ -71,7 +149,11 @@ if (quoteDialog) {
     link.download = 'mk-leisure-custom-boat-brief.txt';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    document.querySelector('#form-status').textContent = 'Your custom boat brief has been downloaded. Share it with the MK Leisure team to start creating your boat.';
+    const statusEl = document.querySelector('#form-status');
+    if (statusEl) {
+      statusEl.textContent = 'Your custom boat brief has been downloaded. Share it with the MK Leisure team to start creating your boat.';
+      renderStatusActions(statusEl, content, `Custom Boat Brief — ${data.get('name') || 'MK Leisure Enquiry'}`);
+    }
   });
 }
 
@@ -101,8 +183,10 @@ const lightbox = document.querySelector('#gallery-lightbox');
 if (lightbox) {
   const lightboxTitle = document.querySelector('#lightbox-title');
   const lightboxImg = document.querySelector('#lightbox-img');
-  const roomTabs = lightbox.querySelectorAll('[data-room-view]');
+  const roomTabs = Array.from(lightbox.querySelectorAll('[data-room-view]'));
+  const roomOrder = ['outside', 'inside', 'bedrooms', 'toilet'];
   let activeOutsideImg = 'assets/hero-boat.webp';
+  let currentRoomView = 'outside';
 
   const roomImages = {
     inside: 'assets/interior-lounge.jpg',
@@ -111,6 +195,7 @@ if (lightbox) {
   };
 
   function setRoomView(view) {
+    currentRoomView = view;
     roomTabs.forEach(tab => {
       tab.classList.toggle('active', tab.getAttribute('data-room-view') === view);
     });
@@ -127,11 +212,9 @@ if (lightbox) {
     card.addEventListener('click', () => {
       activeOutsideImg = card.getAttribute('data-outside-img') || card.querySelector('img')?.getAttribute('src') || 'assets/hero-boat.webp';
       const title = card.getAttribute('data-boat-title') || 'Custom Houseboat';
-      const initialView = card.getAttribute('data-initial-view') || 'inside';
+      const initialView = card.getAttribute('data-initial-view') || 'outside';
       if (lightboxTitle) lightboxTitle.textContent = title;
-      // When clicking an outside boat photo, show its inside right away or let user switch tabs
-      const targetView = initialView === 'outside' ? 'inside' : initialView;
-      setRoomView(targetView);
+      setRoomView(initialView);
       lightbox.showModal();
     });
   });
@@ -140,6 +223,40 @@ if (lightbox) {
     tab.addEventListener('click', () => {
       setRoomView(tab.getAttribute('data-room-view'));
     });
+  });
+
+  // Touch swipe inside lightbox stage on mobile
+  const stage = lightbox.querySelector('.lightbox-stage');
+  if (stage) {
+    let startX = 0;
+    let startY = 0;
+    stage.addEventListener('touchstart', e => {
+      if (e.touches.length === 1) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+    stage.addEventListener('touchend', e => {
+      if (!startX || e.changedTouches.length === 0) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        const idx = roomOrder.indexOf(currentRoomView);
+        const nextIdx = (idx + (dx < 0 ? 1 : -1) + roomOrder.length) % roomOrder.length;
+        setRoomView(roomOrder[nextIdx]);
+      }
+      startX = 0;
+      startY = 0;
+    }, { passive: true });
+  }
+
+  document.querySelector('#lightbox-quote')?.addEventListener('click', () => {
+    lightbox.close();
+    if (quoteDialog) {
+      const status = document.querySelector('#form-status');
+      if (status) status.textContent = '';
+      quoteDialog.showModal();
+    }
   });
 
   lightbox.querySelector('.close')?.addEventListener('click', () => lightbox.close());

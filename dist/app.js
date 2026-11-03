@@ -66,20 +66,68 @@ document.querySelector('#gallery-prev')?.addEventListener('click', () => { curre
 document.querySelector('#gallery-next')?.addEventListener('click', () => { currentBoat = (currentBoat + 1) % boatSpaces.length; updateGallery(); });
 document.querySelector('#gallery-quote')?.addEventListener('click', () => openQuote(currentBoat));
 
+function setHeroSlide(nextIndex) {
+  heroSlide = (nextIndex + heroPhotos.length) % heroPhotos.length;
+  const photo = document.querySelector('.hero-photo');
+  if (photo) {
+    photo.style.backgroundImage = `url('${heroPhotos[heroSlide]}')`;
+    photo.style.backgroundSize = 'cover';
+    photo.style.backgroundPosition = heroSlide === 0 ? '' : 'center center';
+  }
+  const counter = document.querySelector('#hero-counter');
+  if (counter) {
+    counter.textContent = `${heroSlide + 1} / ${heroPhotos.length}`;
+  }
+}
+
 document.querySelectorAll('[data-slide]').forEach(button => {
   button.addEventListener('click', () => {
-    heroSlide = (heroSlide + Number(button.dataset.slide) + heroPhotos.length) % heroPhotos.length;
-    const photo = document.querySelector('.hero-photo');
-    if (photo) {
-      photo.style.backgroundImage = `url('${heroPhotos[heroSlide]}')`;
-      photo.style.backgroundSize = 'cover';
-      photo.style.backgroundPosition = 'center';
+    setHeroSlide(heroSlide + Number(button.dataset.slide));
+  });
+});
+
+// Touch swipe support on hero banner for mobile devices
+const heroSection = document.querySelector('.hero');
+if (heroSection) {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  heroSection.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
     }
+  }, { passive: true });
+
+  heroSection.addEventListener('touchend', e => {
+    if (!touchStartX || e.changedTouches.length === 0) return;
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      setHeroSlide(heroSlide + (dx < 0 ? 1 : -1));
+    }
+    touchStartX = 0;
+    touchStartY = 0;
+  }, { passive: true });
+}
+
+// Preload hero photos after initial load to avoid flicker on mobile
+window.addEventListener('load', () => {
+  heroPhotos.slice(1).forEach(src => {
+    const img = new Image();
+    img.src = src;
   });
 });
 
 const menu = document.querySelector('.menu-toggle');
 const nav = document.querySelector('.header nav');
+function closeMobileMenu() {
+  if (!menu || !nav) return;
+  nav.classList.remove('open');
+  menu.setAttribute('aria-expanded', 'false');
+  menu.textContent = '☰';
+  menu.setAttribute('aria-label', 'Open menu');
+}
+
 if (menu && nav) {
   menu.addEventListener('click', () => {
     const opened = nav.classList.toggle('open');
@@ -88,13 +136,57 @@ if (menu && nav) {
     menu.textContent = opened ? '×' : '☰';
   });
   nav.querySelectorAll('a,button').forEach(item => {
-    item.addEventListener('click', () => {
-      nav.classList.remove('open');
-      menu.setAttribute('aria-expanded', 'false');
-      menu.textContent = '☰';
-      menu.setAttribute('aria-label', 'Open menu');
+    item.addEventListener('click', closeMobileMenu);
+  });
+  document.addEventListener('click', event => {
+    if (nav.classList.contains('open') && !nav.contains(event.target) && !menu.contains(event.target)) {
+      closeMobileMenu();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && nav.classList.contains('open')) {
+      closeMobileMenu();
+      menu.focus();
+    }
+  });
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900 && nav.classList.contains('open')) {
+      closeMobileMenu();
+    }
+  });
+}
+
+// Floating back-to-top visibility
+const floatingTop = document.querySelector('.floating-top');
+if (floatingTop) {
+  window.addEventListener('scroll', () => {
+    floatingTop.classList.toggle('visible', window.scrollY > 380);
+  }, { passive: true });
+}
+
+function renderStatusActions(statusEl, content, subject) {
+  if (!statusEl) return;
+  const actionsWrap = document.createElement('div');
+  actionsWrap.className = 'status-actions';
+
+  const mailLink = document.createElement('a');
+  mailLink.className = 'status-action-btn';
+  mailLink.href = `mailto:info@mkleisure.co.za?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(content)}`;
+  mailLink.textContent = 'Send via Email App →';
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'status-action-btn';
+  copyBtn.textContent = 'Copy Brief';
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard?.writeText(content).then(() => {
+      copyBtn.textContent = 'Copied ✓';
+      setTimeout(() => { copyBtn.textContent = 'Copy Brief'; }, 2200);
     });
   });
+
+  actionsWrap.append(mailLink, copyBtn);
+  statusEl.appendChild(actionsWrap);
 }
 
 document.querySelector('#quote-form')?.addEventListener('submit', event => {
@@ -115,5 +207,9 @@ document.querySelector('#quote-form')?.addEventListener('submit', event => {
   link.download = 'mk-leisure-custom-boat-brief.txt';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  document.querySelector('#form-status').textContent = 'Your custom boat brief is ready to download. Share it with the MK Leisure team to start building your boat.';
+  const statusEl = document.querySelector('#form-status');
+  if (statusEl) {
+    statusEl.textContent = 'Your custom boat brief is ready to download. Share it with the MK Leisure team to start building your boat.';
+    renderStatusActions(statusEl, content, `Custom Boat Brief — ${data.get('name') || 'MK Leisure Enquiry'}`);
+  }
 });

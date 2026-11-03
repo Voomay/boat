@@ -1,5 +1,14 @@
 const menu = document.querySelector('.menu-toggle');
 const nav = document.querySelector('.header nav');
+
+function closeMobileMenu() {
+  if (!menu || !nav) return;
+  nav.classList.remove('open');
+  menu.setAttribute('aria-expanded', 'false');
+  menu.setAttribute('aria-label', 'Open menu');
+  menu.textContent = '☰';
+}
+
 if (menu && nav) {
   menu.addEventListener('click', () => {
     const opened = nav.classList.toggle('open');
@@ -8,13 +17,32 @@ if (menu && nav) {
     menu.textContent = opened ? '×' : '☰';
   });
   nav.querySelectorAll('a').forEach(link => {
-    link.addEventListener('click', () => {
-      nav.classList.remove('open');
-      menu.setAttribute('aria-expanded', 'false');
-      menu.setAttribute('aria-label', 'Open menu');
-      menu.textContent = '☰';
-    });
+    link.addEventListener('click', closeMobileMenu);
   });
+  document.addEventListener('click', event => {
+    if (nav.classList.contains('open') && !nav.contains(event.target) && !menu.contains(event.target)) {
+      closeMobileMenu();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && nav.classList.contains('open')) {
+      closeMobileMenu();
+      menu.focus();
+    }
+  });
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900 && nav.classList.contains('open')) {
+      closeMobileMenu();
+    }
+  });
+}
+
+// Floating back-to-top visibility
+const floatingTop = document.querySelector('.floating-top');
+if (floatingTop) {
+  window.addEventListener('scroll', () => {
+    floatingTop.classList.toggle('visible', window.scrollY > 380);
+  }, { passive: true });
 }
 
 // Pre-select boat from query parameter if provided
@@ -29,6 +57,31 @@ if (boatParam) {
       }
     });
   }
+}
+
+function renderStatusActions(statusEl, content, subject) {
+  if (!statusEl) return;
+  const actionsWrap = document.createElement('div');
+  actionsWrap.className = 'status-actions';
+
+  const mailLink = document.createElement('a');
+  mailLink.className = 'status-action-btn';
+  mailLink.href = `mailto:info@mkleisure.co.za?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(content)}`;
+  mailLink.textContent = 'Send via Email App →';
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'status-action-btn';
+  copyBtn.textContent = 'Copy Brief';
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard?.writeText(content).then(() => {
+      copyBtn.textContent = 'Copied ✓';
+      setTimeout(() => { copyBtn.textContent = 'Copy Brief'; }, 2200);
+    });
+  });
+
+  actionsWrap.append(mailLink, copyBtn);
+  statusEl.appendChild(actionsWrap);
 }
 
 document.querySelector('#contact-form')?.addEventListener('submit', event => {
@@ -49,5 +102,9 @@ document.querySelector('#contact-form')?.addEventListener('submit', event => {
   link.download = 'mk-leisure-contact-enquiry.txt';
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  document.querySelector('#contact-status').textContent = 'Your custom boat brief is ready to download. Share it with the MK Leisure team to start your journey.';
+  const statusEl = document.querySelector('#contact-status');
+  if (statusEl) {
+    statusEl.textContent = 'Your custom boat brief is ready to download. Share it with the MK Leisure team to start your journey.';
+    renderStatusActions(statusEl, text, `Custom Boat Enquiry — ${data.get('name') || 'MK Leisure'}`);
+  }
 });
